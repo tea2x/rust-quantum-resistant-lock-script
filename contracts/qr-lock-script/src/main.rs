@@ -34,6 +34,7 @@ fn new_blake2b() -> Blake2b {
         .build()
 }
 
+// the lockscript argument is the hash of sphincs+ pubkey
 fn get_pubkey_hash() -> Result<H256, SysError> {
     let lock_script = load_script()?;
     let args = lock_script.args().raw_data();
@@ -98,7 +99,7 @@ fn get_sign_info() -> Result<Bytes, Error> {
         .ok_or(Error::InvalidWitnessArgs)?
         .unpack();
     let signature_len = signature.len();
-    if signature_len < QR_LOCK_WITNESS_LEN {
+    if signature_len != QR_LOCK_WITNESS_LEN {
         return Err(Error::LengthNotEnough);
     }
     Ok(signature)
