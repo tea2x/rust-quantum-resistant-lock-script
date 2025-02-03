@@ -138,8 +138,8 @@ pub fn program_entry() -> i8 {
         .expect("Signature must be exactly 17088 bytes");
 
     match slh_dsa_shake_128f::PublicKey::try_from_bytes(&pubkey) {
-        Ok(pubkey) => {
-            let result = pubkey.verify(&message, &fips205_sig, &[]);
+        Ok(pk) => {
+            let result = pk.verify(&message, &fips205_sig, &[]);
             if !result {
                 return Error::SphincsPlusVerify as i8;
             }
