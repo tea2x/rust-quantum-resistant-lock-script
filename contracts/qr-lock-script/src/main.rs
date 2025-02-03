@@ -48,14 +48,13 @@ fn get_pubkey_hash() -> Result<H256, SysError> {
 }
 
 fn generate_sig_hash_all() -> Result<H256, Error> {
-    // load the tx's hash
     let tx_hash = load_tx_hash()?;
 
     // load signature - the first input's witness
     let signature: Bytes = load_witness_args(0, Source::GroupInput)?
         .lock()
         .to_opt()
-        .ok_or(Error::InvalidArgs0)?
+        .ok_or(Error::InvalidWitnessArgs)?
         .unpack();
     let signature_len = signature.len();
 
@@ -70,16 +69,16 @@ fn generate_sig_hash_all() -> Result<H256, Error> {
         let result = load_witness_args(index, Source::Input);
         match result {
             Ok(args) => {
-                let buff: Bytes = args.lock().to_opt().ok_or(Error::InvalidArgs0)?.unpack();
+                let buff: Bytes = args.lock().to_opt().ok_or(Error::InvalidWitnessLock)?.unpack();
                 let buff_size = buff.len();
                 // step 3 - hash len and witness of all inputs
                 blake2b.update(&buff_size.to_le_bytes());
                 blake2b.update(&buff);
             }
             Err(err) if err == SysError::IndexOutOfBound => break,
-            Err(_) => {
-                debug!("load_witness_args() failed");
-                return Err(Error::SyscallError);
+            Err(e) => {
+                debug!("load_witness_args() failed at input index {}: {:?}", index, e);
+                return Err(Error::from(e));
             }
         }
         index += 1;
@@ -96,7 +95,7 @@ fn get_sign_info() -> Result<Bytes, Error> {
     let signature: Bytes = load_witness_args(0, Source::GroupInput)?
         .lock()
         .to_opt()
-        .ok_or(Error::InvalidArgs0)?
+        .ok_or(Error::InvalidWitnessArgs)?
         .unpack();
     let signature_len = signature.len();
     if signature_len < QR_LOCK_WITNESS_LEN {
@@ -129,7 +128,7 @@ pub fn program_entry() -> i8 {
     let mut pubkey_hashed = [0 as u8; BLAKE2B_BLOCK_SIZE];
     blake2b.finalize(&mut pubkey_hashed);
     if pubkey_hash != pubkey_hashed {
-        return Error::InvalidArgs1 as i8;
+        return Error::InvalidSignature as i8;
     }
 
     // verify sphincs+ signature

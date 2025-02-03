@@ -9,8 +9,9 @@ pub enum Error {
     Encoding,
     // Add customized errors here...
     SyscallError,
-    InvalidArgs0,
-    InvalidArgs1,
+    InvalidWitnessArgs,
+    InvalidWitnessLock,
+    InvalidSignature,
     SphincsPlusInvalidPubKey,
     SphincsPlusVerify,
 }
