@@ -1,0 +1,12 @@
+[package]
+name = "qr-lock-script"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = "0.16.3"
+fips205 = "0.4.1"
+blake2b-ref = "0.3.1"
+
+[features]
+native-simulator = ["ckb-std/native-simulator"]
