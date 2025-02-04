@@ -159,12 +159,6 @@ pub fn program_entry() -> i8 {
     let mut pubkey_hashed = [0 as u8; BLAKE2B_BLOCK_SIZE];
     blake2b.finalize(&mut pubkey_hashed);
 
-    debug!(">>> pubkey: {:?}", pubkey);
-    debug!(">>> pubkey_hashed: {:?}", pubkey_hashed);
-    debug!(">>> lockscript argument: {:?}", lockscript_arg);
-    debug!(">>> message: {:?}", message);
-    debug!(">>> signature: {:?}", signature);
-
     if lockscript_arg != pubkey_hashed {
         return Error::InvalidSignature as i8;
     }
