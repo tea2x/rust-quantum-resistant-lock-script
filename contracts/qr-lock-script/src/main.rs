@@ -174,7 +174,10 @@ pub fn program_entry() -> i8 {
         Err(_) => return Error::SphincsPlusInvalidPubKey as i8,
     };
 
-    let result = pk.verify(&message, &fips205_sig, &[]);
+    // this is actually sh-dsa raw verifier without app-level domain separation
+    // and compatible with the signer's end
+    // TOTO update soon on signer's end 
+    let result = pk._test_only_raw_verify(&message, &fips205_sig).unwrap();
     if !result {
         return Error::SphincsPlusVerify as i8;
     }
