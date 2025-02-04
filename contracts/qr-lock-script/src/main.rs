@@ -12,6 +12,7 @@ ckb_std::default_alloc!();
 mod error;
 
 use crate::error::Error;
+use alloc::vec::Vec;
 use blake2b_ref::{Blake2b, Blake2bBuilder};
 use ckb_std::ckb_constants::*;
 use ckb_std::ckb_types::bytes::Bytes;
@@ -35,7 +36,7 @@ fn new_blake2b() -> Blake2b {
 }
 
 // the lockscript argument is the hash of sphincs+ pubkey
-fn get_pubkey_hash() -> Result<H256, SysError> {
+fn get_lock_script_argument() -> Result<H256, SysError> {
     let lock_script = load_script()?;
     let args = lock_script.args().raw_data();
     // the last 32 bytes is the public key
@@ -48,42 +49,71 @@ fn get_pubkey_hash() -> Result<H256, SysError> {
     Ok(pubkey_hash)
 }
 
-fn generate_sig_hash_all() -> Result<H256, Error> {
-    let tx_hash = load_tx_hash()?;
-
-    // load signature - the first input's witness
-    let signature: Bytes = load_witness_args(0, Source::GroupInput)?
-        .lock()
-        .to_opt()
-        .ok_or(Error::InvalidWitnessArgs)?
-        .unpack();
-    let signature_len = signature.len();
-
-    let mut blake2b = new_blake2b();
-    // step 1 - hash the tx's hash
-    blake2b.update(&tx_hash);
-    // step 2 - hash the first witness's length
-    blake2b.update(&signature_len.to_le_bytes());
-
-    let mut index = 1;
+// Helper function to hash witness arguments
+fn hash_witnesses(start_index: usize, source: Source, blake2b: &mut Blake2b) -> Result<(), Error> {
+    let mut index = start_index;
     loop {
-        let result = load_witness_args(index, Source::Input);
-        match result {
+        match load_witness_args(index, source) {
             Ok(args) => {
-                let buff: Bytes = args.lock().to_opt().ok_or(Error::InvalidWitnessLock)?.unpack();
+                let buff: Bytes = args
+                    .lock()
+                    .to_opt()
+                    .ok_or(Error::InvalidWitnessLock)?
+                    .unpack();
                 let buff_size = buff.len();
-                // step 3 - hash len and witness of all inputs
                 blake2b.update(&buff_size.to_le_bytes());
                 blake2b.update(&buff);
             }
             Err(err) if err == SysError::IndexOutOfBound => break,
             Err(e) => {
-                debug!("load_witness_args() failed at input index {}: {:?}", index, e);
+                debug!(
+                    "load_witness_args() failed at input index {}: {:?}",
+                    index, e
+                );
                 return Err(Error::from(e));
             }
         }
         index += 1;
     }
+    Ok(())
+}
+
+// regenerate to-sign message
+fn generate_sig_hash_all() -> Result<H256, Error> {
+    // step 1 - hash the tx's hash
+    let tx_hash = load_tx_hash()?;
+    let mut blake2b = new_blake2b();
+    blake2b.update(&tx_hash);
+
+    /* step 2
+     - zero fill the signature's lock script
+     - hash the len of the signature
+     - hash the lockscript-zeroed signature
+    */
+    let witness = load_witness_args(0, Source::GroupInput)?;
+    let zero_lock: Bytes = {
+        let mut buf = Vec::new();
+        buf.resize(QR_LOCK_WITNESS_LEN, 0);
+        buf.into()
+    };
+    let witness_for_digest = witness
+        .clone()
+        .as_builder()
+        .lock(Some(zero_lock).pack())
+        .build();
+    let witness_len = witness_for_digest.as_bytes().len() as u64;
+    blake2b.update(&witness_len.to_le_bytes());
+    blake2b.update(&witness_for_digest.as_bytes());
+
+    // step 3 - hash the lengths + witnesses of the same script
+    hash_witnesses(1, Source::GroupInput, &mut blake2b)?;
+
+    // step 4 - hash the lengths + witnesses of other inputs
+    hash_witnesses(
+        QueryIter::new(load_cell, Source::Input).count(),
+        Source::Input,
+        &mut blake2b,
+    )?;
 
     let mut message = [0 as u8; BLAKE2B_BLOCK_SIZE];
     blake2b.finalize(&mut message);
@@ -106,7 +136,7 @@ fn get_sign_info() -> Result<Bytes, Error> {
 }
 
 pub fn program_entry() -> i8 {
-    let pubkey_hash = match get_pubkey_hash() {
+    let lockscript_arg = match get_lock_script_argument() {
         Ok(val) => val,
         Err(e) => return Error::from(e) as i8,
     };
@@ -128,7 +158,14 @@ pub fn program_entry() -> i8 {
     blake2b.update(&pubkey);
     let mut pubkey_hashed = [0 as u8; BLAKE2B_BLOCK_SIZE];
     blake2b.finalize(&mut pubkey_hashed);
-    if pubkey_hash != pubkey_hashed {
+
+    debug!(">>> pubkey: {:?}", pubkey);
+    debug!(">>> pubkey_hashed: {:?}", pubkey_hashed);
+    debug!(">>> lockscript argument: {:?}", lockscript_arg);
+    debug!(">>> message: {:?}", message);
+    debug!(">>> signature: {:?}", signature);
+
+    if lockscript_arg != pubkey_hashed {
         return Error::InvalidSignature as i8;
     }
 
