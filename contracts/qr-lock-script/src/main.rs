@@ -55,11 +55,7 @@ fn hash_witnesses(start_index: usize, source: Source, blake2b: &mut Blake2b) -> 
     loop {
         match load_witness_args(index, source) {
             Ok(args) => {
-                let buff: Bytes = args
-                    .lock()
-                    .to_opt()
-                    .ok_or(Error::InvalidWitnessLock)?
-                    .unpack();
+                let buff: Bytes = args.as_bytes();
                 let buff_size = buff.len();
                 blake2b.update(&buff_size.to_le_bytes());
                 blake2b.update(&buff);
@@ -89,6 +85,7 @@ fn generate_sig_hash_all() -> Result<H256, Error> {
      - zero fill the signature's lock script
      - hash the len of the signature
      - hash the lockscript-zeroed signature
+     TODO - save the signature for later use
     */
     let witness = load_witness_args(0, Source::GroupInput)?;
     let zero_lock: Bytes = {

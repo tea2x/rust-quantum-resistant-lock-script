@@ -10,7 +10,6 @@ pub enum Error {
     // Add customized errors here...
     SyscallError,
     InvalidWitnessArgs,
-    InvalidWitnessLock,
     InvalidSignature,
     SphincsPlusInvalidPubKey,
     SphincsPlusVerify,
